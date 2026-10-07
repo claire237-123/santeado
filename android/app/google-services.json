@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "590130723983",
+    "project_id": "santeado",
+    "storage_bucket": "santeado.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:590130723983:android:e30eb8308249d5226704fa",
+        "android_client_info": {
+          "package_name": "com.example.sante_ado"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBy50Pso_HVNjHEU6jDL5gMk3esPKCDOjQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

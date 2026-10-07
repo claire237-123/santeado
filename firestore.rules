@@ -1,0 +1,164 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ------------------------------------------------------------
+    // HELPERS
+    // ------------------------------------------------------------
+
+    // Rôle de l'utilisateur depuis son document users.
+    // CORRIGÉ : si le document users/<uid> n'existe pas encore (compte
+    // créé via Firebase Auth mais profil non encore initialisé dans
+    // Firestore), on retourne une chaîne vide au lieu de faire échouer
+    // la règle (get() sur un document inexistant provoque une erreur
+    // de permission qui bloquait alors toute la requête).
+    function role() {
+      var doc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return doc.data.role;
+    }
+
+    // Un module est visible par les adolescentes uniquement s'il est
+    // explicitement publié (statut 'disponible').
+    function moduleEstDisponible(moduleId) {
+      return get(/databases/$(database)/documents/modules/$(moduleId)).data.statut == 'disponible';
+    }
+
+    // L'utilisateur est-elle une adolescentes (session anonyme ou non) ?
+    function estAdolescente() {
+      return request.auth.uid != null && role() == 'adolescente';
+    }
+
+    // L'utilisateur est-elle un professionnel ?
+    function estProfessionnel() {
+      return request.auth.uid != null && role() == 'professionnel';
+    }
+
+    // L'utilisateur est-elle un administrateur ?
+    function estAdministrateur() {
+      return request.auth.uid != null && role() == 'administrateur';
+    }
+
+    // ------------------------------------------------------------
+    // USERS
+    // ------------------------------------------------------------
+
+    // Lecture : chacun ne lit que son propre profil.
+    // L'administrateur peut lire tous les profils (nécessaire au
+    // tableau de bord et à la gestion des rôles).
+    match /users/{userId} {
+      allow read: if request.auth.uid != null
+        && (request.auth.uid == userId || estAdministrateur());
+
+      // Création : lors de la personnalisation du profil adolescent
+      // (première connexion anonyme) ou lors de la création d'un
+      // compte professionnel/administrateur par un administrateur.
+      allow create: if request.auth.uid != null
+        && (request.auth.uid == userId || estAdministrateur());
+
+      // Mise à jour : chacun modifie son propre profil (surnom, langue,
+      // avatar). L'administrateur peut modifier tous les profils.
+      allow update: if request.auth.uid != null
+        && (request.auth.uid == userId || estAdministrateur());
+
+      allow delete: if estAdministrateur();
+    }
+
+    // ------------------------------------------------------------
+    // MODULES
+    // ------------------------------------------------------------
+
+    // Lecture pour les adolescentes : uniquement les modules publiés.
+    // Les professionnels ne lisent rien ici (leur espace est géré par
+    // l'administrateur). L'administrateur lit tout.
+    match /modules/{moduleId} {
+      allow read: if request.auth.uid != null
+        && (estAdministrateur()
+            || (estAdolescente() && moduleEstDisponible(moduleId)));
+
+      // Création : administrateur uniquement.
+      allow create: if estAdministrateur();
+
+      // Mise à jour : administrateur uniquement.
+      allow update: if estAdministrateur();
+
+      // Suppression : administrateur uniquement.
+      allow delete: if estAdministrateur();
+    }
+
+    // ------------------------------------------------------------
+    // THEMATIQUES (sous-collection de modules)
+    // ------------------------------------------------------------
+
+    // Une thématique hérite de la visibilité de son module parent.
+    // On vérifie donc le statut du module parent pour décider de
+    // l'accès en lecture.
+    match /modules/{moduleId}/thematiques/{thematiqueId} {
+      allow read: if request.auth.uid != null
+        && (estAdministrateur()
+            || (estAdolescente() && moduleEstDisponible(moduleId)));
+
+      allow create: if estAdministrateur();
+      allow update: if estAdministrateur();
+      allow delete: if estAdministrateur();
+    }
+
+    // ------------------------------------------------------------
+    // ETAPES (sous-collection de thematiques)
+    // ------------------------------------------------------------
+
+    // Même logique : accès en lecture si le module parent est
+    // publié (pour les adolescentes) ou si l'utilisateur est
+    // administrateur.
+    match /modules/{moduleId}/thematiques/{thematiqueId}/etapes/{etapeId} {
+      allow read: if request.auth.uid != null
+        && (estAdministrateur()
+            || (estAdolescente() && moduleEstDisponible(moduleId)));
+
+      allow create: if estAdministrateur();
+      allow update: if estAdministrateur();
+      allow delete: if estAdministrateur();
+    }
+
+    // ------------------------------------------------------------
+    // PROGRESSION
+    // ------------------------------------------------------------
+
+    // Chaque adolescentes ne lit/écrit que sa propre progression.
+    // L'administrateur peut tout lit (tableau de bord statistiques)
+    // mais n'écrit pas la progression des utilisatrices.
+    match /progress/{progressId} {
+      allow read: if request.auth.uid != null
+        && (estAdministrateur()
+            || (estAdolescente()
+                && request.auth.uid == resource.data.uid));
+
+      allow create: if request.auth.uid != null
+        && estAdolescente()
+        && request.auth.uid == request.resource.data.uid;
+
+      allow update: if request.auth.uid != null
+        && estAdolescente()
+        && request.auth.uid == resource.data.uid;
+    }
+
+    // ------------------------------------------------------------
+    // DEMANDES D'ACCOMPAGNEMENT
+    // ------------------------------------------------------------
+
+    // Lecture : l'adolescente voit les siennes, l'administrateur
+    // voit toutes les demandes.
+    match /demandes_accompagnement/{demandeId} {
+      allow read: if request.auth.uid != null
+        && (estAdministrateur()
+            || (estAdolescente()
+                && request.auth.uid == resource.data.uid));
+
+      allow create: if request.auth.uid != null
+        && estAdolescente()
+        && request.auth.uid == request.resource.data.uid;
+
+      allow update: if estAdministrateur();
+      allow delete: if estAdministrateur();
+    }
+  }
+}
